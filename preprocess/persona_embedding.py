@@ -10,7 +10,7 @@ import time
 # ---------------------------
 # CONFIG
 # ---------------------------
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
+load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=api_key)
 
