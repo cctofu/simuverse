@@ -16,7 +16,7 @@ client = OpenAI(api_key=api_key)
 
 INPUT_FILE = "data/Twin-2K-500_with_summaries.json"
 OUTPUT_FILE = "data/Twin-2K-500_with_embeddings.json"
-EMBEDDING_MODEL = "text-embedding-3-larger"
+EMBEDDING_MODEL = "text-embedding-3-large"
 MAX_WORKERS = 5       
 SAVE_INTERVAL = 25  
 
