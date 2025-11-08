@@ -1,24 +1,22 @@
 import json
 import os
 import re
+import sys
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from openai import OpenAI
 from dotenv import load_dotenv
 import time
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import EMBEDDING_MODEL, MAX_WORKERS, SAVE_INTERVAL, OPENAI_API_KEY
 
 # ---------------------------
 # CONFIG
 # ---------------------------
-load_dotenv()
-api_key = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=api_key)
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 INPUT_FILE = "data/Twin-2K-500_with_summaries.json"
 OUTPUT_FILE = "data/Twin-2K-500_with_embeddings.json"
-EMBEDDING_MODEL = "text-embedding-3-large"
-MAX_WORKERS = 5       
-SAVE_INTERVAL = 25  
 
 # ---------------------------
 # HELPERS

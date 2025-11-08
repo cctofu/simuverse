@@ -1,172 +1,107 @@
-import random
-from typing import Dict, Any
-from utils import (
-    generate_relevant_personas,
-    find_top_personas,
-    analyze_purchase_decisions,
-    classify_yes_personas,
-    generate_product_personas,
-    generate_persona_insights
-)
+import json
+import os
+from typing import List, Dict, Any
+from openai import OpenAI
+import numpy as np
+from config import EMBEDDING_MODEL, OPENAI_API_KEY, TOP_K, DATABASE_PATH
 
-def run_query(product_description: str) -> Dict[str, Any]:
-    print(f"🚀 Running persona flow for: {product_description}")
-
-    # Step 1: Generate 5 relevant personas
-    personas = generate_relevant_personas(product_description)
-    print(f"✅ Generated {len(personas)} personas")
-
-    # Step 2: Generate product personas with demographics
-    product_persona_data = generate_product_personas(product_description)
-    product_persona = product_persona_data.get("personas", [])
-    age_ranges = product_persona_data.get("age_ranges", [])
-    gender = product_persona_data.get("gender", "Both")
-    print(f"✅ Generated {len(product_persona)} product personas")
-    print(f"📊 Demographics - Age ranges: {age_ranges}, Gender: {gender}")
-
-    # Step 3: Find top 10 similar personas from database
-    topk = find_top_personas(personas, top_k=10)
-    print(f"✅ Found {len(topk)} top personas (most similar profiles)")
-
-    # Step 4: Analyze purchase decisions with demographic filtering
-    analysis_results = analyze_purchase_decisions(
-        product_description=product_description,
-        age_ranges=age_ranges,
-        gender=gender
+def generate_structured_query(client: OpenAI, product_description: str) -> str:
+    """
+    Use GPT to rewrite the product description into a structured
+    persona-like summary for embedding. This mirrors the style of
+    consumer_summary / embedding_profile_text entries.
+    """
+    system_prompt = (
+        "You are a market psychologist. Rewrite the given product description "
+        "into a structured, persona-compatible summary emphasizing how the "
+        "product aligns with consumer values, motivations, risk attitudes, "
+        "emotional appeal, and lifestyle context. Keep it short (≈5–7 sentences)."
     )
-    print(f"✅ Purchase analysis completed")
 
-    # Step 5: Classify 'yes' personas
-    yes_personas = [p for p in analysis_results["details"] if p["decision"] == "yes"]
-    classified_yes = classify_yes_personas(yes_personas, product_persona)
-    print(f"✅ Classified {len(classified_yes)} 'yes' personas")
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",  # lightweight reasoning model
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": product_description}
+        ],
+        temperature=0.4,
+    )
+    return response.choices[0].message.content.strip()
 
-    # Count would_buy_pie responses
-    would_buy_pie_counts = {"yes": 0, "no": 0}
-    if analysis_results and "details" in analysis_results:
-        for detail in analysis_results["details"]:
-            decision = detail.get("decision", "").lower()
-            if decision == "yes":
-                would_buy_pie_counts["yes"] += 1
-            elif decision == "no":
-                would_buy_pie_counts["no"] += 1
+def load_personas(db_path: str) -> List[Dict[str, Any]]:
+    if not os.path.exists(db_path):
+        raise FileNotFoundError(f"Database file not found: {db_path}")
+    with open(db_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, list):
+        raise ValueError("Database JSON should be a list of persona objects.")
+    return data
 
-    # Count yes_pie - distribution of yes personas across product personas
-    yes_pie_counts = {}
-    if product_persona:
-        # Initialize all product personas with 0 count
-        for persona in product_persona:
-            yes_pie_counts[persona] = 0
 
-    if classified_yes:
-        # Count how many yes personas are classified into each product persona
-        for classification in classified_yes:
-            persona_type = classification.get("assigned_archetype", "")
-            if persona_type in yes_pie_counts:
-                yes_pie_counts[persona_type] += 1
+def l2_normalize(v: List[float]) -> List[float]:
+    arr = np.asarray(v, dtype="float32")
+    norm = np.linalg.norm(arr)
+    return (arr / norm).tolist() if norm > 0 else arr.tolist()
 
-    # Count age_distribution - distribution of all personas across age ranges
-    age_distribution = {
-        "18-29": 0,
-        "30-49": 0,
-        "50-64": 0,
-        "65+": 0
-    }
 
-    if analysis_results and "details" in analysis_results:
-        for detail in analysis_results["details"]:
-            age = detail.get("age")
-            if age is not None:
-                age_str = str(age).strip()
-                # Handle both string ranges and numeric values
-                if age_str in ["18-29", "30-49", "50-64"]:
-                    age_distribution[age_str] += 1
-                elif age_str == "65" or age_str.startswith("65"):
-                    age_distribution["65+"] += 1
-                else:
-                    # Try to parse as numeric if it's not a range string
-                    try:
-                        age_val = int(age_str)
-                        if 18 <= age_val <= 29:
-                            age_distribution["18-29"] += 1
-                        elif 30 <= age_val <= 49:
-                            age_distribution["30-49"] += 1
-                        elif 50 <= age_val <= 64:
-                            age_distribution["50-64"] += 1
-                        elif age_val >= 65:
-                            age_distribution["65+"] += 1
-                    except (ValueError, TypeError):
-                        pass  # Skip invalid age values
+def cosine_sim(a: List[float], b: List[float]) -> float:
+    va = np.asarray(a, dtype="float32")
+    vb = np.asarray(b, dtype="float32")
+    denom = (np.linalg.norm(va) * np.linalg.norm(vb))
+    if denom == 0:
+        return 0.0
+    return float(np.dot(va, vb) / denom)
 
-    # Select one random persona from each product_persona category (if count >= 1)
-    selected_consumer = {}
 
-    if classified_yes and analysis_results and "details" in analysis_results:
-        # Group classified yes personas by product persona type
-        personas_by_type = {}
-        for classification in classified_yes:
-            persona_type = classification.get("assigned_archetype", "")
-            persona_id = classification.get("persona_id", "")
+def ensure_persona_vectors(personas: List[Dict[str, Any]]) -> None:
+    missing = [p.get("id") for p in personas if not p.get("embedding_vector")]
+    if missing:
+        raise ValueError(
+            f"The following personas are missing 'embedding_vector': {missing[:10]}"
+            + (" ..." if len(missing) > 10 else "")
+        )
+    # Normalize all vectors to be safe
+    for p in personas:
+        p["embedding_vector"] = l2_normalize(p["embedding_vector"])
 
-            if persona_type not in personas_by_type:
-                personas_by_type[persona_type] = []
-            personas_by_type[persona_type].append(persona_id)
 
-        # For each product persona type with at least 1 persona, randomly select one
-        for persona_type, persona_ids in personas_by_type.items():
-            if len(persona_ids) >= 1:
-                # Randomly select one persona_id from this type
-                selected_id = random.choice(persona_ids)
+def embed_query(client: OpenAI, text: str) -> List[float]:
+    resp = client.embeddings.create(model=EMBEDDING_MODEL, input=text)
+    vec = resp.data[0].embedding
+    return l2_normalize(vec)
 
-                # Find the persona_summary for this selected persona
-                for detail in analysis_results["details"]:
-                    if detail.get("persona_id") == selected_id:
-                        selected_consumer[persona_type] = {
-                            "persona_id": selected_id,
-                            "persona_summary": detail.get("persona_summary", "")
-                        }
-                        break
 
-    # Step 6: Generate insights for each selected consumer
-    print(f"🔍 Generating insights for {len(selected_consumer)} selected consumers...")
-    consumer_insights = {}
+def rank_personas(query_vec: List[float], personas: List[Dict[str, Any]], top_k: int) -> List[Dict[str, Any]]:
+    scored: List[Dict[str, Any]] = []
+    for p in personas:
+        vec = p.get("embedding_vector")
+        if not vec:
+            continue
+        score = cosine_sim(query_vec, vec)
+        scored.append({
+            "id": p.get("id"),
+            "score": score,
+            "embedding_profile_text": p.get("embedding_profile_text", ""),
+            "key_values": p.get("key_values", {}),
+            "consumer_summary": p.get("consumer_summary", {})
+        })
+    scored.sort(key=lambda x: x["score"], reverse=True)
+    return scored[:max(1, top_k)]
 
-    for persona_type, consumer_data in selected_consumer.items():
-        persona_summary = consumer_data.get("persona_summary", "")
-        if persona_summary:
-            print(f"  Generating insights for: {persona_type}")
-            insights = generate_persona_insights(
-                product_description=product_description,
-                product_persona_name=persona_type,
-                persona_summary=persona_summary
-            )
-            consumer_insights[persona_type] = {
-                "persona_id": consumer_data.get("persona_id"),
-                "insights": insights
-            }
 
-    print(f"✅ Generated insights for {len(consumer_insights)} consumers")
+def run_query(product_description):
+    client = OpenAI(api_key=OPENAI_API_KEY)
+    personas = load_personas(DATABASE_PATH)
+    ensure_persona_vectors(personas)
+    structured_query = generate_structured_query(client, product_description)
+    qvec = embed_query(client, structured_query)
+    top = rank_personas(qvec, personas, TOP_K)
 
-    # Build final response with only the requested keys
-    result = {
-        "would_buy_pie": would_buy_pie_counts,
-        "yes_pie": yes_pie_counts,
-        "age_distribution": age_distribution,
-        "consumer_insights": consumer_insights,
-        "demographics": {
-            "target_age_ranges": age_ranges,
-            "target_gender": gender
-        }
-    }
-
-    return result
+    print(f"\nTop {len(top)} matches for: {product_description}\n---")
+    for i, r in enumerate(top, start=1):
+        preview = (r.get("embedding_profile_text") or "").replace("\n", " ")
+        print(f"\n{i}. ID: {r.get('id')}\n   Similarity: {r['score']:.4f}\n   Preview: {preview}")
 
 if __name__ == "__main__":
-    sample_product_description = (
-        "A high-quality, ergonomic office chair designed for maximum comfort "
-        "and support during long working hours. Features adjustable height, "
-        "lumbar support, and breathable mesh material."
-    )
-    query_result = run_query(sample_product_description)
-    print("Final Query Result:")
-    print(query_result)
+    product_description = "A high-performance running shoe designed for marathon runners seeking lightweight comfort and superior cushioning."
+    run_query(product_description)

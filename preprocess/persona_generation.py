@@ -4,21 +4,18 @@ import re
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from openai import OpenAI
-from dotenv import load_dotenv
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import MAX_WORKERS, SAVE_INTERVAL, SUMMARY_MODEL, OPENAI_API_KEY
 
 # ---------------------------
 # CONFIG
 # ---------------------------
-load_dotenv()
-api_key = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=api_key)
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 INPUT_FILE = "data/Twin-2K-500_persona_structured.json"
 OUTPUT_FILE = "data/Twin-2K-500_with_summaries.json"
-SUMMARY_MODEL = "gpt-4o-mini"
-MAX_WORKERS = 5           
-SAVE_INTERVAL = 20       
-
+ 
 # ---------------------------
 # SYSTEM PROMPT
 # ---------------------------
