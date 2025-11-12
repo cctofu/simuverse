@@ -94,7 +94,6 @@ function SearchPage() {
   const [selectedCustomer, setSelectedCustomer] = useState<number | null>(null)
   const [chatMessage, setChatMessage] = useState('')
   const [chatHistory, setChatHistory] = useState<Array<{ sender: 'user' | 'bot', message: string }>>([])
-  const [isAnimating, setIsAnimating] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [chatLoading, setChatLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -489,11 +488,9 @@ function SearchPage() {
               e.currentTarget.style.backgroundColor = '#d2d3ff'
             }}
             onClick={() => {
-              setIsAnimating(true)
               setSelectedCustomer(index)
               setTimeout(() => {
                 setChatMode(true)
-                setIsAnimating(false)
               }, 600)
             }}>
               Ask Question
