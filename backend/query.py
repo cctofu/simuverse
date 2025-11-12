@@ -74,7 +74,7 @@ def rank_personas(query_vec: List[float], personas: List[Dict[str, Any]], top_k:
 # --------------------------------------------------
 # K-Means clustering (on cluster_embedding_vector)
 # --------------------------------------------------
-def cluster_personas(personas: List[Dict[str, Any]], k: int = None, visualize: bool = True) -> Dict[int, str]:
+def cluster_personas(personas: List[Dict[str, Any]], k: int = None, visualize: bool = True) -> tuple[Dict[int, str], Dict[int, int]]:
     X = np.array([p["cluster_embedding_vector"] for p in personas], dtype=np.float32)
     X = stabilize_embeddings(X)
 
@@ -108,6 +108,7 @@ def cluster_personas(personas: List[Dict[str, Any]], k: int = None, visualize: b
         #plt.show()
 
     cluster_centroid_pids = {}
+    cluster_counts = {}
     for cluster_id in range(k):
         centroid = centroids[cluster_id]
         # Find the single persona closest to this centroid
@@ -116,9 +117,11 @@ def cluster_personas(personas: List[Dict[str, Any]], k: int = None, visualize: b
             key=lambda p: np.linalg.norm(np.array(p["cluster_embedding_vector"]) - centroid)
         )
         cluster_centroid_pids[cluster_id] = closest_persona["id"]
+        # Count how many personas belong to this cluster
+        cluster_counts[cluster_id] = int(np.sum(labels == cluster_id))
 
     print("\n✅ Cluster centroid PIDs computed (1 per cluster).")
-    return cluster_centroid_pids
+    return cluster_centroid_pids, cluster_counts
 
 
 # --------------------------------------------------
@@ -248,7 +251,7 @@ def generate_consumer_tags(client: OpenAI, product_description: str, consumer_su
         )
 
         resp = client.chat.completions.create(
-            model="gpt-5-nano-2025-08-07",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -294,7 +297,7 @@ def query(product_description):
     print(f"\n✅ Age distribution: {age_distribution}")
 
     # Step 4: Cluster using cluster_embedding_vector
-    cluster_pids = cluster_personas(top_personas, 3, visualize=True)
+    cluster_pids, cluster_counts = cluster_personas(top_personas, 3, visualize=True)
 
     # Step 5: Fetch consumer summaries for centroid PIDs
     consumer_summaries = fetch_consumer_summaries(top_personas, cluster_pids)
@@ -308,13 +311,17 @@ def query(product_description):
     print("\n🧠 Generating consumer profile descriptions...")
     profiles = generate_consumer_tags(client, product_description, consumer_summaries)
 
-    # Step 8: Format customer profile with cluster tags and demographics
+    # Step 8: Format customer profile with cluster tags, demographics, and percentage
     customer_profile = {}
+    total_personas = len(top_personas)
     for cluster_id, tags_data in profiles.items():
+        count = cluster_counts.get(cluster_id, 0)
+        percentage = round((count / total_personas) * 100, 1) if total_personas > 0 else 0
         customer_profile[f"cluster{cluster_id}"] = {
             "tags": tags_data.get("tags", []),
             "demographics": cluster_demographics.get(cluster_id, {}),
-            "pid": cluster_pids.get(cluster_id, "")
+            "pid": cluster_pids.get(cluster_id, ""),
+            "percentage": percentage
         }
 
     print("\n✅ Clustering complete. Returning gender distribution, age distribution, and customer profile.")

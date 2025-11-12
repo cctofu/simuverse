@@ -1,5 +1,8 @@
 import os
 import sys
+import json
+import re
+import hashlib
 from typing import List
 from openai import OpenAI
 
@@ -30,92 +33,126 @@ class PersonaChat:
 
         # Extract key_values as context
         key_values = persona.get("key_values", {})
+        persona_summary = persona.get("summary", "")
 
-        # Build context string from key_values
+        # Build context string
         context_parts = []
         for key, value in key_values.items():
             if isinstance(value, str):
                 context_parts.append(f"{key}: {value}")
             elif isinstance(value, (list, dict)):
                 context_parts.append(f"{key}: {value}")
-
         context = "\n".join(context_parts)
+        if persona_summary:
+            context = persona_summary + "\n" + context
 
         # Create system prompt telling the model to roleplay as this persona
-        system_prompt = (
-            "You are roleplaying as a specific person with the following characteristics and attributes. "
-            "Answer the user's questions from this person's perspective, staying in character and using "
-            "their values, beliefs, lifestyle, and personality traits to inform your responses. "
-            "Be authentic and consistent with the persona described below.\n\n"
-            f"Your persona:\n{context}"
+        system_prompt = f"""
+You simulate a real consumer and must output strictly valid text that matches the schema.
+Do not invent brands, prices, or statistics unless they appear in <FACTS>. 
+Keep the writing concrete, first person, and 2–3 sentences.
+<PROFILE>
+{context}
+</PROFILE>
+Text: Write 2-3 sentences in first person that reflect the decision and mention exactly one everyday constraint that fits the profile 
+(money, time, space, location, family). No brand/statistic unless in <FACTS>. Be specific; avoid hedging.
+"""
+        self.conversation_history = [{"role": "system", "content": system_prompt}]
+
+    # ------------------------------------------------------------------ #
+    # Utilities
+    # ------------------------------------------------------------------ #
+    def _compute_jitter(self, question: str) -> int:
+        seed = int(hashlib.sha256(f"{self.pid}|{question}".encode()).hexdigest(), 16)
+        return (seed % 5) - 2
+
+    def _is_likelihood_question(self, question: str) -> bool:
+        pattern = re.compile(
+            r"\b(likely|likelihood|probab|chance|odds|1-10|1 to 10|would you|will you|consider)\b",
+            re.I,
         )
+        return bool(pattern.search(question))
 
-        # Initialize conversation history with system prompt
-        self.conversation_history = [
-            {"role": "system", "content": system_prompt}
-        ]
-
+    # ------------------------------------------------------------------ #
+    # Core chat methods
+    # ------------------------------------------------------------------ #
     def ask(self, question: str) -> str:
-        """
-        Ask the persona a question and get a response. Maintains conversation context.
-
-        Args:
-            question: The question to ask the persona
-
-        Returns:
-            The persona's response to the question
-        """
-        # Add user question to conversation history
         self.conversation_history.append({"role": "user", "content": question})
-
-        # Get response from the model
         response = self.client.chat.completions.create(
             model=CHAT_MODEL,
             messages=self.conversation_history
         )
-
         assistant_message = response.choices[0].message.content.strip()
-
-        # Add assistant response to conversation history
         self.conversation_history.append({"role": "assistant", "content": assistant_message})
-
         return assistant_message
 
-    def get_history(self) -> List[dict]:
-        """
-        Get the full conversation history.
+    def ask_decision(self, question: str, facts: dict = None) -> str:
+        facts = facts or {}
+        jitter = self._compute_jitter(question)
+        facts_json = json.dumps(facts, ensure_ascii=False)
 
-        Returns:
-            List of message dictionaries with role and content
-        """
-        # Return everything except the system prompt
+        system = (
+            "You simulate a real consumer and must output strictly valid JSON that matches the schema. "
+            "Do not invent brands, prices, or statistics unless they appear in <FACTS>. "
+            "Keep the writing concrete, first person, and 2–3 sentences."
+        )
+
+        user = f"""
+<PROFILE> {self.persona.get('summary', '')} </PROFILE>
+<QUESTION> {question} </QUESTION>
+<FACTS> {facts_json} </FACTS>
+Decision steps (follow exactly):
+1) Likelihood → score:
+   - 1 = very unlikely, 10 = very likely.
+2) Feature adjustments:
+   +2 if sender is a favorite category/brand explicitly in <FACTS>.
+   +2 if 'deal_threshold_pct' in <FACTS> is met by the offer in the question.
+   +1 if budget is tight but persona hunts promos.
+   -2 if inbox volume ≥100/day, unsubscribe spree, or privacy-paranoid.
+   -1 if time pressure is high or promo fatigue high.
+3) Add deterministic jitter J = {jitter}.
+4) Clamp S to 1..10.
+5) Text: Write 2–3 sentences in first person mentioning exactly one everyday constraint
+   (money, time, space, location, family). Choose one micro-scenario that fits:
+   [Inbox-zero purge] [Deal-hunter watching % threshold] [Brand loyalist]
+   [Privacy-first] [Time-crunched skimmer].
+Output (strict JSON only):
+{{"text": "...", "score": S (integer 1..10), "assumption": ""}}
+"""
+
+        response = self.client.chat.completions.create(
+            model=CHAT_MODEL,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            response_format={"type": "json_object"},
+        )
+        return response.choices[0].message.content.strip()
+
+    def ask_auto(self, question: str, facts: dict = None) -> str:
+        """Auto-detect whether to return plain text or JSON score."""
+        if self._is_likelihood_question(question):
+            return self.ask_decision(question, facts)
+        else:
+            return self.ask(question)
+
+    # ------------------------------------------------------------------ #
+    # History management
+    # ------------------------------------------------------------------ #
+    def get_history(self) -> List[dict]:
         return self.conversation_history[1:]
 
     def clear_history(self):
-        """
-        Clear the conversation history while keeping the system prompt.
-        """
-        # Keep only the system prompt
         self.conversation_history = self.conversation_history[:1]
 
 
-def ask_persona(pid: str, question: str) -> str:
-    """
-    Single-turn function: Ask a persona a question without maintaining conversation history.
-    For multi-turn conversations, use the PersonaChat class instead.
-
-    Args:
-        pid: The persona ID to query
-        question: The question to ask the persona
-
-    Returns:
-        The persona's response to the question
-
-    Raises:
-        ValueError: If the persona ID is not found in the database
-    """
+# ---------------------------------------------------------------------- #
+# Helper function for one-off calls
+# ---------------------------------------------------------------------- #
+def ask_persona(pid: str, question: str, facts: dict = None) -> str:
     chat = PersonaChat(pid)
-    return chat.ask(question)
+    return chat.ask_auto(question, facts)
 
 
 # --------------------------------------------------

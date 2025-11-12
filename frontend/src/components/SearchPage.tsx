@@ -26,6 +26,7 @@ interface ClusterProfile {
   tags: string[]
   demographics: Demographics
   pid?: string // Add persona ID
+  percentage?: number // Percentage of top_k personas in this cluster
 }
 
 interface ApiData {
@@ -42,6 +43,45 @@ const emptyData: ApiData = {
   gender_distribution: {},
   age_distribution: {},
   customer_profile: {}
+}
+
+// Random name arrays
+const MALE_NAMES = [
+  'James', 'Michael', 'Robert', 'John', 'David', 'William', 'Richard', 'Joseph',
+  'Thomas', 'Christopher', 'Daniel', 'Matthew', 'Anthony', 'Mark', 'Donald',
+  'Steven', 'Andrew', 'Paul', 'Joshua', 'Kenneth', 'Kevin', 'Brian', 'George',
+  'Timothy', 'Ronald', 'Edward', 'Jason', 'Jeffrey', 'Ryan', 'Jacob', 'Gary',
+  'Nicholas', 'Eric', 'Jonathan', 'Stephen', 'Larry', 'Justin', 'Scott', 'Brandon',
+  'Benjamin', 'Samuel', 'Raymond', 'Gregory', 'Alexander', 'Patrick', 'Frank',
+  'Dennis', 'Jerry', 'Tyler', 'Aaron', 'Jose', 'Adam', 'Nathan', 'Henry'
+]
+
+const FEMALE_NAMES = [
+  'Mary', 'Patricia', 'Jennifer', 'Linda', 'Barbara', 'Elizabeth', 'Susan',
+  'Jessica', 'Sarah', 'Karen', 'Lisa', 'Nancy', 'Betty', 'Margaret', 'Sandra',
+  'Ashley', 'Kimberly', 'Emily', 'Donna', 'Michelle', 'Carol', 'Amanda', 'Dorothy',
+  'Melissa', 'Deborah', 'Stephanie', 'Rebecca', 'Sharon', 'Laura', 'Cynthia',
+  'Kathleen', 'Amy', 'Angela', 'Shirley', 'Anna', 'Brenda', 'Pamela', 'Emma',
+  'Nicole', 'Helen', 'Samantha', 'Katherine', 'Christine', 'Debra', 'Rachel',
+  'Carolyn', 'Janet', 'Catherine', 'Maria', 'Heather', 'Diane', 'Ruth', 'Julie'
+]
+
+// Simple seeded random number generator for consistent randomization
+const seededRandom = (seed: number): number => {
+  const x = Math.sin(seed) * 10000
+  return x - Math.floor(x)
+}
+
+// Function to get a random name based on gender
+const getRandomName = (gender: string | undefined, index: number): string => {
+  if (!gender) return `Customer Type ${index + 1}`
+
+  const nameArray = gender.toLowerCase() === 'male' ? MALE_NAMES : FEMALE_NAMES
+  // Use seeded random to pick a name based on index
+  const seed = index * 12345 + 67890 // Add constants to make it more random
+  const randomValue = seededRandom(seed)
+  const nameIndex = Math.floor(randomValue * nameArray.length)
+  return nameArray[nameIndex]
 }
 
 function SearchPage() {
@@ -85,7 +125,7 @@ function SearchPage() {
         console.error('Failed to load data:', err)
         setError('Failed to load product analysis. Please try again.')
       } finally {
-        setLoading(true)
+        setLoading(false)
       }
     }
 
@@ -107,7 +147,8 @@ function SearchPage() {
       clusterId,
       tags: profile.tags,
       demographics: profile.demographics,
-      pid: profile.pid || clusterId
+      pid: profile.pid || clusterId,
+      percentage: profile.percentage
     }))
   }
 
@@ -309,8 +350,27 @@ function SearchPage() {
             border: '1px solid #E5E0F3',
             minHeight: '75vh',
             display: 'flex',
-            flexDirection: 'column'
+            flexDirection: 'column',
+            position: 'relative'
           }}>
+            {/* Percentage Badge in Top Right */}
+            {profile.percentage !== undefined && (
+              <div style={{
+                position: 'absolute',
+                top: '12px',
+                right: '12px',
+                backgroundColor: '#7D2ADD',
+                color: '#FFFFFF',
+                padding: '6px 12px',
+                borderRadius: '20px',
+                fontSize: '14px',
+                fontWeight: '700',
+                fontFamily: 'Satoshi, sans-serif',
+                boxShadow: '0 2px 6px rgba(125, 42, 221, 0.3)'
+              }}>
+                {profile.percentage}%
+              </div>
+            )}
             <div style={{ flex: 1 }}>
               <h3 style={{
                 color: '#2B2140',
@@ -321,7 +381,7 @@ function SearchPage() {
                 fontWeight: '900',
                 fontSize: '20px'
               }}>
-                Customer Type {index + 1}
+                {getRandomName(profile.demographics.gender, index)}
               </h3>
 
               <img
@@ -454,8 +514,28 @@ function SearchPage() {
                 boxShadow: '0 2px 8px rgba(125, 42, 221, 0.1)',
                 border: '1px solid #E5E0F3',
                 minHeight: '75vh',
-                animation: 'slideIn 0.6s ease-in-out'
+                animation: 'slideIn 0.6s ease-in-out',
+                position: 'relative'
               }}>
+                {/* Percentage Badge in Top Right */}
+                {profile.percentage !== undefined && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '12px',
+                    right: '12px',
+                    backgroundColor: '#7D2ADD',
+                    color: '#FFFFFF',
+                    padding: '6px 12px',
+                    borderRadius: '20px',
+                    fontSize: '14px',
+                    fontWeight: '700',
+                    fontFamily: 'Satoshi, sans-serif',
+                    boxShadow: '0 2px 6px rgba(125, 42, 221, 0.3)',
+                    zIndex: 10
+                  }}>
+                    {profile.percentage}%
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <h3 style={{
                     color: '#2B2140',
@@ -466,7 +546,7 @@ function SearchPage() {
                     fontWeight: '900',
                     fontSize: '20px'
                   }}>
-                    Customer Type {selectedCustomer + 1}
+                    {getRandomName(profile.demographics.gender, selectedCustomer)}
                   </h3>
                   <button
                     onClick={() => {
@@ -594,7 +674,7 @@ function SearchPage() {
                   fontWeight: '900',
                   fontSize: '20px'
                 }}>
-                  Chat with Customer Type {selectedCustomer + 1}
+                  Chat with {getRandomName(profile.demographics.gender, selectedCustomer)}
                 </h3>
 
                 {/* Chat History */}
@@ -630,7 +710,8 @@ function SearchPage() {
                           textAlign: msg.sender === 'user' ? 'right' : 'left',
                           marginLeft: msg.sender === 'user' ? 'auto' : '0',
                           marginRight: msg.sender === 'user' ? '0' : 'auto',
-                          maxWidth: '80%'
+                          maxWidth: '80%',
+                          width: 'fit-content'
                         }}
                       >
                         {msg.message}

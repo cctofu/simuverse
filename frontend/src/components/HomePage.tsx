@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import STGBoostVideo from '../assets/STG_boost.mov'
 
 function HomePage() {
   const navigate = useNavigate()
@@ -28,17 +29,22 @@ function HomePage() {
       top: 0,
       left: 0
     }}>
-      <h1 style={{
-        textAlign: 'center',
-        marginBottom: '60px',
-        color: '#000000',
-        fontSize: '96px',
-        fontWeight: '700',
-        letterSpacing: '4px',
-        fontFamily: 'Akira, sans-serif'
-      }}>
-        Simuverse
-      </h1>
+      <video
+        autoPlay
+        loop
+        muted
+        playsInline
+        style={{
+          marginBottom: '60px',
+          maxWidth: '800px',
+          width: '100%',
+          height: 'auto',
+          display: 'block'
+        }}
+      >
+        <source src={STGBoostVideo} type="video/mp4" />
+        Your browser does not support the video tag.
+      </video>
 
       <div style={{
         width: '700px',
@@ -52,8 +58,8 @@ function HomePage() {
           display: 'block',
           marginBottom: '20px',
           color: '#000000',
-          fontSize: '20px',
-          fontWeight: '600'
+          fontSize: '25px',
+          fontWeight: '900'
         }}>
           Product Description
         </label>
@@ -101,15 +107,15 @@ function HomePage() {
             padding: '18px 40px',
             fontSize: '20px',
             fontWeight: '600',
-            backgroundColor: '#ff9900',
-            color: '#000000',
+            backgroundColor: '#7D2ADD',
+            color: '#ffffff',
             border: 'none',
             borderRadius: '10px',
             cursor: 'pointer',
             transition: 'background-color 0.2s'
           }}
-          onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#cc7a00'}
-          onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#ff9900'}
+          onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#9258d4ff'}
+          onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#7D2ADD'}
         >
           Generate Response
         </button>

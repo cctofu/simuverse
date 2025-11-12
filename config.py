@@ -15,5 +15,5 @@ SAVE_INTERVAL = 25
 DATABASE_PATH = "data/Twin-2K-500_final.json"
 
 # Backend Configuration
-TOP_K = 200
+TOP_K = 100
 CHAT_MODEL = "gpt-5-nano-2025-08-07"
