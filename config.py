@@ -12,7 +12,8 @@ MAX_WORKERS = 5
 SAVE_INTERVAL = 25
 
 # Database Configuration
-DATABASE_PATH = "data/Twin-2K-500_with_embeddings.json"
+DATABASE_PATH = "data/Twin-2K-500_final.json"
 
 # Backend Configuration
-TOP_K = 50
+TOP_K = 200
+CHAT_MODEL = "gpt-5-nano-2025-08-07"

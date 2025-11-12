@@ -1,6 +1,7 @@
 from datasets import load_dataset
 import json
 import re
+import argparse
 from tqdm import tqdm
 
 # ---------------------------
@@ -8,17 +9,16 @@ from tqdm import tqdm
 # ---------------------------
 DATASET_NAME = "LLM-Digital-Twin/Twin-2K-500"
 CONFIG_NAME = "full_persona"
-OUTPUT_FILE = "data/Twin-2K-500_persona_structured.json"
 
-# Regex for "The person's ... is/are the following: ..."
+
+# ---------------------------
+# HELPERS
+# ---------------------------
 PATTERN = re.compile(
     r"The person(?:'s| is)?\s*(.*?)\s*(?:is|are)\s+the\s+following[:：]?\s*(.*)",
     re.IGNORECASE | re.DOTALL
 )
 
-# ---------------------------
-# HELPERS
-# ---------------------------
 def split_into_paragraphs(text: str):
     """Split long persona text into chunks by paragraph breaks."""
     text = text.replace("\r\n", "\n").replace("\r", "\n")
@@ -43,8 +43,33 @@ def extract_key_value(chunk: str):
 # MAIN PIPELINE
 # ---------------------------
 def main():
-    print(f"📥 Downloading dataset: {DATASET_NAME} ({CONFIG_NAME}) ...")
-    ds = load_dataset(DATASET_NAME, CONFIG_NAME)
+    parser = argparse.ArgumentParser(description="Download and process persona dataset")
+    parser.add_argument(
+        "-o", "--output",
+        type=str,
+        required=True,
+        help="Output file path (required)"
+    )
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default=DATASET_NAME,
+        help=f"Dataset name (default: {DATASET_NAME})"
+    )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=CONFIG_NAME,
+        help=f"Config name (default: {CONFIG_NAME})"
+    )
+    args = parser.parse_args()
+
+    output_file = args.output
+    dataset_name = args.dataset
+    config_name = args.config
+
+    print(f"📥 Downloading dataset: {dataset_name} ({config_name}) ...")
+    ds = load_dataset(dataset_name, config_name)
 
     # Combine all splits into one list
     if isinstance(ds, dict):
@@ -97,12 +122,12 @@ def main():
         })
 
     print(f"🧩 Extracted {total_pairs} key–value pairs across {len(processed)} users")
-    print(f"💾 Writing structured personas to {OUTPUT_FILE} ...")
+    print(f"💾 Writing structured personas to {output_file} ...")
 
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         json.dump(processed, f, ensure_ascii=False, indent=2)
 
-    print(f"✅ Done! Saved structured persona dataset to {OUTPUT_FILE}")
+    print(f"✅ Done! Saved structured persona dataset to {output_file}")
 
 
 if __name__ == "__main__":

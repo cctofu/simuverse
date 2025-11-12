@@ -37,7 +37,7 @@ function HomePage() {
         letterSpacing: '4px',
         fontFamily: 'Akira, sans-serif'
       }}>
-        Mirra
+        Simuverse
       </h1>
 
       <div style={{

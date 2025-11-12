@@ -2,10 +2,10 @@ import json
 import os
 import re
 import sys
+import argparse
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from openai import OpenAI
-from dotenv import load_dotenv
 import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import EMBEDDING_MODEL, MAX_WORKERS, SAVE_INTERVAL, OPENAI_API_KEY
@@ -14,9 +14,6 @@ from config import EMBEDDING_MODEL, MAX_WORKERS, SAVE_INTERVAL, OPENAI_API_KEY
 # CONFIG
 # ---------------------------
 client = OpenAI(api_key=OPENAI_API_KEY)
-
-INPUT_FILE = "data/Twin-2K-500_with_summaries.json"
-OUTPUT_FILE = "data/Twin-2K-500_with_embeddings.json"
 
 # ---------------------------
 # HELPERS
@@ -96,21 +93,39 @@ def process_record(record):
     return record
 
 
-def save_checkpoint(data_dict):
+def save_checkpoint(data_dict, output_file):
     """Save current progress."""
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         json.dump(list(data_dict.values()), f, indent=2, ensure_ascii=False)
 
 
 def main():
-    print(f"📥 Loading {INPUT_FILE} ...")
-    with open(INPUT_FILE, "r", encoding="utf-8") as f:
+    parser = argparse.ArgumentParser(description="Generate embeddings for persona dataset")
+    parser.add_argument(
+        "-i", "--input",
+        type=str,
+        required=True,
+        help="Input file path (required)"
+    )
+    parser.add_argument(
+        "-o", "--output",
+        type=str,
+        required=True,
+        help="Output file path (required)"
+    )
+    args = parser.parse_args()
+
+    input_file = args.input
+    output_file = args.output
+
+    print(f"📥 Loading {input_file} ...")
+    with open(input_file, "r", encoding="utf-8") as f:
         data = json.load(f)
 
     # Resume if partial output exists
     existing = {}
-    if os.path.exists(OUTPUT_FILE):
-        with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
+    if os.path.exists(output_file):
+        with open(output_file, "r", encoding="utf-8") as f:
             existing = {r["id"]: r for r in json.load(f)}
         print(f"🔄 Resuming from checkpoint: {len(existing)} completed")
 
@@ -127,12 +142,12 @@ def main():
             completed += 1
 
             if completed % SAVE_INTERVAL == 0:
-                save_checkpoint(existing)
+                save_checkpoint(existing, output_file)
                 print(f"💾 Saved after {completed} embeddings")
 
-    save_checkpoint(existing)
+    save_checkpoint(existing, output_file)
     print(f"✅ All done — total {len(existing)} records processed.")
-    print(f"💾 Final file saved to {OUTPUT_FILE}")
+    print(f"💾 Final file saved to {output_file}")
 
 
 if __name__ == "__main__":

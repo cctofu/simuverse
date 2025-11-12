@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import argparse
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from openai import OpenAI
@@ -12,9 +13,6 @@ from config import MAX_WORKERS, SAVE_INTERVAL, SUMMARY_MODEL, OPENAI_API_KEY
 # CONFIG
 # ---------------------------
 client = OpenAI(api_key=OPENAI_API_KEY)
-
-INPUT_FILE = "data/Twin-2K-500_persona_structured.json"
-OUTPUT_FILE = "data/Twin-2K-500_with_summaries.json"
  
 # ---------------------------
 # SYSTEM PROMPT
@@ -99,19 +97,37 @@ QUALITATIVE SELF-CONCEPT:
 # PARALLEL PIPELINE
 # ---------------------------
 
-def save_progress(data):
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+def save_progress(data, output_file):
+    with open(output_file, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 def main():
-    print(f"📥 Loading {INPUT_FILE} ...")
-    with open(INPUT_FILE, "r", encoding="utf-8") as f:
+    parser = argparse.ArgumentParser(description="Generate consumer summaries for persona dataset")
+    parser.add_argument(
+        "-i", "--input",
+        type=str,
+        required=True,
+        help="Input file path (required)"
+    )
+    parser.add_argument(
+        "-o", "--output",
+        type=str,
+        required=True,
+        help="Output file path (required)"
+    )
+    args = parser.parse_args()
+
+    input_file = args.input
+    output_file = args.output
+
+    print(f"📥 Loading {input_file} ...")
+    with open(input_file, "r", encoding="utf-8") as f:
         data = json.load(f)
 
     # Load existing partial results if resuming
-    if os.path.exists(OUTPUT_FILE):
+    if os.path.exists(output_file):
         print("🔄 Resuming from existing file...")
-        with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
+        with open(output_file, "r", encoding="utf-8") as f:
             existing = {r["id"]: r for r in json.load(f)}
     else:
         existing = {}
@@ -121,7 +137,6 @@ def main():
 
     print(f"⚙️ Processing {len(remaining)} remaining profiles with {MAX_WORKERS} threads ...")
     completed = 0
-    results = []
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         futures = [executor.submit(generate_consumer_summary, r) for r in remaining]
@@ -131,13 +146,13 @@ def main():
             completed += 1
 
             if completed % SAVE_INTERVAL == 0:
-                save_progress(list(existing.values()))
+                save_progress(list(existing.values()), output_file)
                 print(f"💾 Saved checkpoint after {completed} profiles")
 
     # Final save
-    save_progress(list(existing.values()))
+    save_progress(list(existing.values()), output_file)
     print(f"✅ Finished processing {completed} profiles.")
-    print(f"💾 Results saved to {OUTPUT_FILE}")
+    print(f"💾 Results saved to {output_file}")
 
 if __name__ == "__main__":
     main()
