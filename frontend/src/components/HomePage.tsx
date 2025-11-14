@@ -1,11 +1,20 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import STGBoostVideo from '../assets/STG_boost.mov'
 
 function HomePage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [productInput, setProductInput] = useState("")
   const [error, setError] = useState<string | null>(null)
+
+  // Pre-fill input from URL parameter if present
+  useEffect(() => {
+    const productFromUrl = searchParams.get('product')
+    if (productFromUrl) {
+      setProductInput(productFromUrl)
+    }
+  }, [searchParams])
 
   const handleGenerateResponse = () => {
     if (!productInput.trim()) {

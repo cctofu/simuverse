@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { PieChart } from '@mui/x-charts/PieChart'
 import { BarChart } from '@mui/x-charts/BarChart'
 import { Quantum } from 'ldrs/react'
@@ -72,13 +72,23 @@ const seededRandom = (seed: number): number => {
   return x - Math.floor(x)
 }
 
-// Function to get a random name based on gender
-const getRandomName = (gender: string | undefined, index: number): string => {
+// Function to get a random name based on gender and pid
+const getRandomName = (gender: string | undefined, index: number, pid?: string): string => {
   if (!gender) return `Customer Type ${index + 1}`
 
   const nameArray = gender.toLowerCase() === 'male' ? MALE_NAMES : FEMALE_NAMES
-  // Use seeded random to pick a name based on index
-  const seed = index * 12345 + 67890 // Add constants to make it more random
+
+  // Create a more unique seed using pid if available
+  let seed = index * 12345 + 67890
+  if (pid) {
+    // Extract numeric part from pid (e.g., "user_000009" -> 9)
+    const pidMatch = pid.match(/\d+/)
+    if (pidMatch) {
+      const pidNumber = parseInt(pidMatch[0], 10)
+      seed = pidNumber * 7919 + index * 541 // Use prime numbers for better distribution
+    }
+  }
+
   const randomValue = seededRandom(seed)
   const nameIndex = Math.floor(randomValue * nameArray.length)
   return nameArray[nameIndex]
@@ -86,6 +96,7 @@ const getRandomName = (gender: string | undefined, index: number): string => {
 
 function SearchPage() {
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
   const productDescription = searchParams.get('product') || ''
 
   const [data, setData] = useState<ApiData>(emptyData)
@@ -308,11 +319,36 @@ function SearchPage() {
             }}>
               Simuverse
             </h1>
-            <div>
-              <strong style={{ color: '#2B2140' }}>Product:</strong>
-              <span style={{ fontSize: '22px', fontWeight: '900', color: '#7D2ADD', marginLeft: '8px', fontFamily: 'Satoshi, sans-serif' }}>
-                {productDescription}
-              </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '15px', flex: 1 }}>
+              <div>
+                <strong style={{ color: '#2B2140' }}>Product:</strong>
+                <span style={{ fontSize: '22px', fontWeight: '900', color: '#7D2ADD', marginLeft: '8px', fontFamily: 'Satoshi, sans-serif' }}>
+                  {productDescription}
+                </span>
+              </div>
+              <button
+                onClick={() => navigate(`/?product=${encodeURIComponent(productDescription)}`)}
+                style={{
+                  backgroundColor: '#d2d3ff',
+                  color: '#2B2140',
+                  padding: '8px 20px',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  fontFamily: 'Satoshi, sans-serif',
+                  border: 'none',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#b8b9f5'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#d2d3ff'
+                }}
+              >
+                Change
+              </button>
             </div>
           </div>
 
@@ -380,7 +416,7 @@ function SearchPage() {
                 fontWeight: '900',
                 fontSize: '20px'
               }}>
-                {getRandomName(profile.demographics.gender, index)}
+                {getRandomName(profile.demographics.gender, index, profile.pid)}
               </h3>
 
               <img
@@ -543,7 +579,7 @@ function SearchPage() {
                     fontWeight: '900',
                     fontSize: '20px'
                   }}>
-                    {getRandomName(profile.demographics.gender, selectedCustomer)}
+                    {getRandomName(profile.demographics.gender, selectedCustomer, profile.pid)}
                   </h3>
                   <button
                     onClick={() => {
@@ -662,17 +698,47 @@ function SearchPage() {
                 flexDirection: 'column',
                 animation: 'fadeIn 0.6s ease-in-out'
               }}>
-                <h3 style={{
-                  color: '#2B2140',
-                  textAlign: 'left',
-                  marginBottom: '15px',
-                  marginTop: '0',
-                  fontFamily: 'Satoshi, sans-serif',
-                  fontWeight: '900',
-                  fontSize: '20px'
-                }}>
-                  Chat with {getRandomName(profile.demographics.gender, selectedCustomer)}
-                </h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                  <h3 style={{
+                    color: '#2B2140',
+                    textAlign: 'left',
+                    marginBottom: '0',
+                    marginTop: '0',
+                    fontFamily: 'Satoshi, sans-serif',
+                    fontWeight: '900',
+                    fontSize: '20px'
+                  }}>
+                    Chat with {getRandomName(profile.demographics.gender, selectedCustomer, profile.pid)}
+                  </h3>
+                  <button
+                    onClick={() => {
+                      setChatMode(false)
+                      setSelectedCustomer(null)
+                      setChatHistory([])
+                      setSessionId(null)
+                    }}
+                    style={{
+                      backgroundColor: '#d2d3ff',
+                      color: '#2B2140',
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      fontSize: '14px',
+                      fontWeight: '600',
+                      fontFamily: 'Satoshi, sans-serif',
+                      border: 'none',
+                      cursor: 'pointer',
+                      transition: 'background-color 0.2s'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = '#b8b9f5'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = '#d2d3ff'
+                    }}
+                  >
+                    Close Chat
+                  </button>
+                </div>
 
                 {/* Chat History */}
                 <div style={{
