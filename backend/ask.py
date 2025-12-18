@@ -6,7 +6,6 @@ import hashlib
 from typing import List
 from openai import OpenAI
 
-# Import configuration and utilities
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import OPENAI_API_KEY, DATABASE_PATH, CHAT_MODEL
 from utils import load_personas
@@ -147,12 +146,91 @@ Output (strict JSON only):
         self.conversation_history = self.conversation_history[:1]
 
 
-# ---------------------------------------------------------------------- #
-# Helper function for one-off calls
-# ---------------------------------------------------------------------- #
 def ask_persona(pid: str, question: str, facts: dict = None) -> str:
     chat = PersonaChat(pid)
     return chat.ask_auto(question, facts)
+
+
+def get_persona_feedback(pid: str, product_description: str) -> dict:
+    personas = load_personas(DATABASE_PATH)
+    persona = None
+    for p in personas:
+        if p.get("id") == pid:
+            persona = p
+            break
+
+    if persona is None:
+        raise ValueError(f"Persona with ID '{pid}' not found in database")
+
+    # Extract persona context
+    persona_summary = persona.get("summary", "")
+    key_values = persona.get("key_values", {})
+
+    # Build context string
+    context_parts = []
+    for key, value in key_values.items():
+        if isinstance(value, str):
+            context_parts.append(f"{key}: {value}")
+        elif isinstance(value, (list, dict)):
+            context_parts.append(f"{key}: {value}")
+    context = "\n".join(context_parts)
+    if persona_summary:
+        context = persona_summary + "\n" + context
+
+    # Create system prompt
+    system_prompt = f"""
+You are simulating a real consumer based on the profile below. Answer the questions honestly based on this persona's characteristics, values, and preferences.
+
+<PROFILE>
+{context}
+</PROFILE>
+
+<PRODUCT>
+{product_description}
+</PRODUCT>
+
+You will be asked to rate the product on three dimensions using a 1-10 scale, where 1 is very low and 10 is very high.
+Provide your ratings and brief explanations from the persona's perspective.
+"""
+
+    # Ask the three questions
+    client = OpenAI(api_key=OPENAI_API_KEY)
+
+    user_prompt = """
+Based on the product description provided and your persona profile, please answer these three questions:
+
+1. Purchase Intent: On a scale of 1-10, how likely are you to purchase this product?
+2. Product Rating: On a scale of 1-10, how much do you like this product?
+3. Idea Relevance: On a scale of 1-10, how relevant is this product idea to you?
+
+Respond in strict JSON format with the following structure:
+{
+    "purchase_intent": {
+        "score": <integer 1-10>,
+        "explanation": "<2-3 sentences explaining your score from first person perspective>"
+    },
+    "product_rating": {
+        "score": <integer 1-10>,
+        "explanation": "<2-3 sentences explaining your score from first person perspective>"
+    },
+    "idea_relevance": {
+        "score": <integer 1-10>,
+        "explanation": "<2-3 sentences explaining your score from first person perspective>"
+    }
+}
+"""
+
+    response = client.chat.completions.create(
+        model=CHAT_MODEL,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        response_format={"type": "json_object"}
+    )
+
+    result = json.loads(response.choices[0].message.content.strip())
+    return result
 
 
 # --------------------------------------------------
